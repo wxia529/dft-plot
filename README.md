@@ -1,22 +1,68 @@
-# VASP HDF5-Enabled Workflow
+# DFT Plot
 
-This repository provides a reproducible computational workflow for **VASP (Vienna Ab initio Simulation Package)** compiled with **HDF5 support**, enabling efficient I/O for large-scale DFT calculations via the `vaspout.h5` file.
+Tools for visualizing DFT calculation results (VASP).
 
 ## Features
 
-- Automated setup and execution of VASP jobs with HDF5 output.
-- Tools to parse and analyze `vaspout.h5` using and `py4vasp`.
-- Integration-ready structure for high-throughput or machine learning workflows.
-- Compatibility with VASP ≥6.3 (HDF5 support officially introduced in 6.3.0).
+- DOS plotting from `vaspout.h5` or `DOSCAR`
+- Easy customization via Jupyter notebooks
+- Modular design for adding new plot types (band structure, charge density, etc.)
 
-## Prerequisites
+## Installation
 
-- **VASP** compiled with HDF5 support (`-Dusehdf5` flag in `makefile.include`).
-  - Ensure `libhdf5` and development headers are installed on your system.
-- Python ≥3.8 with the following packages:
-  ```bash
-  pip install h5py py4vasp numpy ase pymatgen
-  ```
-- A valid `POTCAR` library and `INCAR`/`KPOINTS` templates for your system.
+```bash
+pip install -e .
+```
 
-## Workflow Overview
+For development with Jupyter:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+1. Put your VASP output files (`vaspout.h5`, `DOSCAR`, etc.) in the `data/` directory
+2. Open `notebooks/01_dos_plotting.ipynb`
+3. Modify the filepath and run
+
+```python
+from dftplot import read_vaspout, plot_dos
+
+# Read data
+dos_data = read_vaspout("data/vaspout.h5")
+
+# Plot
+plot_dos(dos_data, save_path="dos.png", x_lim=[-10, 10])
+```
+
+## Directory Structure
+
+```
+dft-plot/
+├── notebooks/           # Jupyter notebooks (user entry point)
+├── dftplot/             # Core package
+│   ├── dos/             # DOS plotting
+│   ├── band/            # Band structure (TODO)
+│   ├── charge/          # Charge density (TODO)
+│   └── utils/           # Utilities
+├── data/                # Your VASP output files (.gitignore)
+├── examples/            # Example data
+└── README.md
+```
+
+## Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `x_lim` | Energy range (eV) | `[-5, 5]` |
+| `y_lim` | DOS range | `None` (auto) |
+| `font_size` | Font size | `14` |
+| `legend_loc` | Legend position | `"upper left"` |
+| `align_to_fermi` | Shift energy to Fermi level | `True` |
+| `show_total_dos` | Show total DOS line | `False` |
+| `show_fermi_line` | Show Fermi level line | `False` |
+
+## License
+
+MIT

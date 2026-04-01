@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dftplot"
+version = "0.2.0"
+description = "Tools for visualizing DFT calculation results (VASP)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20",
+    "matplotlib>=3.5",
+    "h5py>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyterlab",
+    "ipykernel",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dftplot*"]

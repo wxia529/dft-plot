@@ -1,10 +1,27 @@
+# VASP output files
 WAVECAR
 CHG*
 OUTCAR
 *.log
 vaspout.h5
+DOSCAR
+EIGENVAL
 
+# User data directory
+data/
+
+# Cache and virtual environments
 __pycache__/
 *.pyc
 *.venv/
 venv/
+.pytest_cache/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
