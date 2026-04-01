@@ -1,11 +1,10 @@
-# 忽略所有 VASP 输出
 WAVECAR
 CHG*
 OUTCAR
 *.log
 vaspout.h5
 
-# 忽略 Python 缓存
 __pycache__/
 *.pyc
 *.venv/
+venv/
