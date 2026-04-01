@@ -21,7 +21,7 @@ pip install -e ".[dev]"
 jupyter lab notebooks/dos.ipynb
 
 # Run Python script directly
-python -c "from dftplot import read_vaspout, plot_vasp_dos"
+python -c "from dftplot import plot_vasp_dos"
 ```
 
 ### Testing
@@ -47,30 +47,17 @@ python -c "from dftplot.dos import plot_vasp_dos; print('OK')"
   import numpy as np
   import matplotlib.pyplot as plt
   
-  from dftplot.utils.io import read_vaspout
+  from dftplot.dos import plotter
   ```
 
 ### Naming Conventions
-- **Functions**: `snake_case` (e.g., `read_vaspout`, `plot_vasp_dos`)
+- **Functions**: `snake_case` (e.g., `plot_vasp_dos`)
 - **Variables**: `snake_case` (e.g., `dos_data`, `fermi_energy`)
 - **Constants**: `UPPER_CASE` (e.g., `FONT_SIZE`, `X_LIM`)
 - **Modules**: `snake_case` (e.g., `plotter.py`, `io.py`)
 
 ### Function Signatures
 - Use docstrings with `Args:` and `Returns:` sections
-- Example:
-  ```python
-  def read_vaspout(filepath):
-      """
-      Read DOS data from vaspout.h5 file.
-
-      Args:
-          filepath: path to vaspout.h5
-
-      Returns:
-          dict with energies, fermi_energy, up, down
-      """
-  ```
 
 ### Type Hints
 - Optional but encouraged for new code
@@ -99,8 +86,7 @@ dft-plot/
 │   ├── band/            # Band structure (TODO)
 │   ├── charge/          # Charge density (TODO)
 │   └── utils/
-│       ├── __init__.py
-│       └── io.py        # File I/O utilities
+│       └── __init__.py
 ├── data/                # User VASP files (.gitignore)
 ├── examples/            # Example data
 ├── pyproject.toml       # Package config
@@ -116,7 +102,7 @@ Each plotting module (dos, band, charge) should have:
 
 ### Data Flow
 1. User places VASP files in `data/`
-2. Notebook calls `read_vaspout("../data/vaspout.h5")`
+2. Notebook uses `py4vasp` to read data: `calc.dos.to_dict(selection="...")`
 3. Data passed to `plot_vasp_dos(dos_data)`
 4. Plot saved or displayed
 
@@ -134,8 +120,8 @@ Each plotting module (dos, band, charge) should have:
 5. Add notebook `notebooks/02_band_plotting.ipynb`
 
 ### New File Format Support
-1. Add reader function in `dftplot/utils/io.py`
-2. Follow existing pattern (`read_vaspout`, `read_doscar`)
+1. Add reader function in appropriate module
+2. Follow existing pattern in `plotter.py`
 3. Add docstring with Args/Returns
 
 ## Git Workflow

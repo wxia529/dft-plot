@@ -26,25 +26,16 @@ LEGEND_LOC = "upper left"  # Position of the legend.
 LEGEND_NCOL = 1  #
 COLOR_TOTAL = "k"  # Color for the total DOS line.
 
-# --- 5. Font Configuration ---
-FONT_SIZE = 14  # 统一字体大小 (坐标轴标签、刻度、图例)
-FONT_FAMILY = "Arial"  # 字体家族
-FONT_BOLD = False  # True: 字体加粗 (坐标轴、图例)
-MATHTEXT_ENABLED = False  # True: 启用 mathtext 自定义字体
+# --- 5. Font Configuration (NEW: Separated Sizes) ---
+GENERAL_FONT_SIZE = 14  # 坐标轴标签、刻度等通用字体大小
+LEGEND_FONT_SIZE = 10  # 图例专用的字体大小 (独立控制)
 
 # --- Global Style Settings ---
-mpl.rcParams["font.family"] = FONT_FAMILY
+mpl.rcParams["font.family"] = "Arial"
+mpl.rcParams["font.size"] = GENERAL_FONT_SIZE  # 应用通用字体大小
+mpl.rcParams["font.weight"] = "bold"
+mpl.rcParams["axes.labelweight"] = "bold"
 mpl.rcParams["axes.unicode_minus"] = False
-
-if FONT_BOLD:
-    mpl.rcParams["font.weight"] = "bold"
-    mpl.rcParams["axes.labelweight"] = "bold"
-
-if MATHTEXT_ENABLED:
-    mpl.rcParams["mathtext.fontset"] = "custom"
-    mpl.rcParams["mathtext.rm"] = FONT_FAMILY
-    mpl.rcParams["mathtext.it"] = f"{FONT_FAMILY}:italic"
-    mpl.rcParams["mathtext.bf"] = f"{FONT_FAMILY}:bold"
 
 # --- Helper Constant for 'auto' sorting ---
 NON_METALS = {
@@ -114,21 +105,19 @@ def plot_vasp_dos(dos_data):
         fermi_line = efermi_val
         xlabel_text = "Absolute Energy (eV)"
 
-    dos_up = np.array(dos_data["up"])
-    has_spin = "down" in dos_data and np.any(dos_data["down"])
-    dos_dw = np.array(dos_data["down"]) if has_spin else None
+    # Support py4vasp to_dict() format (uses 'total' instead of 'up'/'down')
+    if "total" in dos_data:
+        dos_up = np.array(dos_data["total"])
+        has_spin = False
+        dos_dw = None
+    else:
+        dos_up = np.array(dos_data["up"])
+        has_spin = "down" in dos_data and np.any(dos_data["down"])
+        dos_dw = np.array(dos_data["down"]) if has_spin else None
 
     # ---------------- 2. Label Processing & Color Setup ----------------
-    ignore_keys = ["energies", "fermi_energy", "up", "down"]
-    raw_labels = list(
-        set(
-            [
-                k.replace("_up", "").replace("_down", "")
-                for k in dos_data.keys()
-                if k not in ignore_keys
-            ]
-        )
-    )
+    ignore_keys = ["energies", "fermi_energy", "up", "down", "total"]
+    raw_labels = list(set([k for k in dos_data.keys() if k not in ignore_keys]))
 
     sorted_labels = get_sorted_labels(
         raw_labels, mode=ORDER_MODE, manual_order=MANUAL_ORDER
@@ -172,10 +161,15 @@ def plot_vasp_dos(dos_data):
     for i, label in enumerate(sorted_labels):
         color = palette[i % len(palette)]
 
-        y_up = dos_data.get(f"{label}_up", np.zeros_like(raw_energy))
-        y_dw = dos_data.get(f"{label}_down", np.zeros_like(raw_energy))
+        # Support py4vasp to_dict() format (no _up/_down suffix)
+        if label in dos_data:
+            y_up = dos_data[label]
+            y_dw = np.zeros_like(raw_energy)
+        else:
+            y_up = dos_data.get(f"{label}_up", np.zeros_like(raw_energy))
+            y_dw = dos_data.get(f"{label}_down", np.zeros_like(raw_energy))
 
-        if has_spin:
+        if has_spin and np.any(y_dw):
             ax.plot(plot_energy, y_up, lw=1.5, c=color, label=label)
             ax.plot(plot_energy, -y_dw, lw=1.5, c=color)
             ax.fill_between(plot_energy, 0, y_up, color=color, alpha=0.2)
@@ -208,12 +202,13 @@ def plot_vasp_dos(dos_data):
     ax.axhline(0, c="black", lw=0.5)
 
     ax.set_xlim(X_LIM)
-    ax.set_xlabel(xlabel_text, fontsize=FONT_SIZE)
-    ax.set_ylabel("Density of states (states/eV)", fontsize=FONT_SIZE)
-    # ax.set_ylabel(r'Density of states/states$\cdot$eV$^{-1}$', fontsize=FONT_SIZE)
-    ax.tick_params(axis="both", labelsize=FONT_SIZE)
+    ax.set_xlabel(xlabel_text)
+    ax.set_ylabel("Density of states (states/eV)")
 
-    ax.legend(loc=LEGEND_LOC, frameon=False, fontsize=FONT_SIZE, ncol=LEGEND_NCOL)
+    # --- NEW: Independent Legend Font Size ---
+    ax.legend(
+        loc=LEGEND_LOC, frameon=False, fontsize=LEGEND_FONT_SIZE, ncol=LEGEND_NCOL
+    )
 
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)

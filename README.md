@@ -4,7 +4,7 @@ Tools for visualizing DFT calculation results (VASP).
 
 ## Features
 
-- DOS plotting from `vaspout.h5` or `DOSCAR`
+- DOS plotting using py4vasp
 - Easy customization via Jupyter notebooks
 - Modular design for adding new plot types (band structure, charge density, etc.)
 
@@ -22,18 +22,22 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-1. Put your VASP output files (`vaspout.h5`, `DOSCAR`, etc.) in the `data/` directory
-2. Open `notebooks/01_dos_plotting.ipynb`
-3. Modify the filepath and run
+1. Put your VASP output files in the `data/` directory
+2. Open `notebooks/dos.ipynb`
+3. Run the notebook
 
 ```python
-from dftplot import read_vaspout, plot_dos
+from dftplot.dos import plotter
+from py4vasp import Calculation
 
-# Read data
-dos_data = read_vaspout("data/vaspout.h5")
+calc = Calculation.from_path("data/dos")
+
+# Configure
+plotter.SHOW_TOTAL_DOS = False
+plotter.X_LIM = [-5, 5]
 
 # Plot
-plot_dos(dos_data, save_path="dos.png", x_lim=[-10, 10])
+plotter.plot_vasp_dos(calc.dos.to_dict(selection="d(Fe), p(O)"))
 ```
 
 ## Directory Structure
