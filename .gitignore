@@ -23,3 +23,7 @@ venv/
 *.swp
 *.swo
 *.csv
+
+# user-notebooks
+users/
+user-notebooks/
