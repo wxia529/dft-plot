@@ -87,6 +87,27 @@ def get_sorted_labels(labels, mode="auto", manual_order=None):
         return sorted(metals) + sorted(non_metals) + sorted(others)
 
 
+def extract_base_labels(labels):
+    """
+    Extract base labels by stripping _up/_down suffixes.
+    For spin-polarized data from py4vasp, keys like 'V_d_up' and 'V_d_down'
+    should be merged into a single base label 'V_d'.
+
+    Args:
+        labels: List of label strings (may contain _up/_down suffixes)
+
+    Returns:
+        List of unique base labels with suffixes stripped
+    """
+    base_labels = set()
+    for label in labels:
+        if label.endswith("_up") or label.endswith("_down"):
+            base_labels.add(label.rsplit("_", 1)[0])
+        else:
+            base_labels.add(label)
+    return list(base_labels)
+
+
 def plot_vasp_dos(dos_data):
     """
     Main plotting function.
@@ -117,7 +138,8 @@ def plot_vasp_dos(dos_data):
 
     # ---------------- 2. Label Processing & Color Setup ----------------
     ignore_keys = ["energies", "fermi_energy", "up", "down", "total"]
-    raw_labels = list(set([k for k in dos_data.keys() if k not in ignore_keys]))
+    raw_prefixed_labels = [k for k in dos_data.keys() if k not in ignore_keys]
+    raw_labels = extract_base_labels(raw_prefixed_labels)
 
     sorted_labels = get_sorted_labels(
         raw_labels, mode=ORDER_MODE, manual_order=MANUAL_ORDER
@@ -161,13 +183,16 @@ def plot_vasp_dos(dos_data):
     for i, label in enumerate(sorted_labels):
         color = palette[i % len(palette)]
 
-        # Support py4vasp to_dict() format (no _up/_down suffix)
-        if label in dos_data:
+        # Check for spin-polarized data: try label_up/label_down first
+        if f"{label}_up" in dos_data and f"{label}_down" in dos_data:
+            y_up = dos_data[f"{label}_up"]
+            y_dw = dos_data[f"{label}_down"]
+        elif label in dos_data:
             y_up = dos_data[label]
             y_dw = np.zeros_like(raw_energy)
         else:
-            y_up = dos_data.get(f"{label}_up", np.zeros_like(raw_energy))
-            y_dw = dos_data.get(f"{label}_down", np.zeros_like(raw_energy))
+            y_up = np.zeros_like(raw_energy)
+            y_dw = np.zeros_like(raw_energy)
 
         if has_spin and np.any(y_dw):
             ax.plot(plot_energy, y_up, lw=1.5, c=color, label=label)
