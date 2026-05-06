@@ -27,3 +27,9 @@ venv/
 # user-notebooks
 users/
 user-notebooks/
+
+*gz
+*tar
+*h5
+
+*png

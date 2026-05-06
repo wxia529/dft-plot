@@ -8,8 +8,8 @@ import re
 # ==========================================
 # --- 1. Basic Plotting Switches ---
 ALIGN_TO_FERMI = True  # True: Shift energy so Fermi level is at 0 eV.
-SHOW_TOTAL_DOS = False  # True: Plot the total DOS (black line).
-SHOW_FERMI_LINE = False  # True: Show Fermi plots
+SHOW_TOTAL_DOS = True  # True: Plot the total DOS (black line).
+SHOW_FERMI_LINE = True  # True: Show Fermi plots
 
 # --- 2. Axis Limits ---
 X_LIM = [-5, 5]  # X-axis range (Energy in eV).
@@ -117,12 +117,13 @@ def plot_vasp_dos(dos_data):
     raw_energy = np.array(dos_data["energies"])
     efermi_val = float(dos_data["fermi_energy"])
 
+    # py4vasp returns energies relative to E_F; convert back to absolute when requested.
     if ALIGN_TO_FERMI:
-        plot_energy = raw_energy - efermi_val
+        plot_energy = raw_energy
         fermi_line = 0.0
         xlabel_text = r"Energy (eV) relative to E$_F$"
     else:
-        plot_energy = raw_energy
+        plot_energy = raw_energy + efermi_val
         fermi_line = efermi_val
         xlabel_text = "Absolute Energy (eV)"
 
