@@ -14,12 +14,27 @@ SHOW_FERMI_LINE = True  # True: Show Fermi plots
 # --- 2. Axis Limits ---
 X_LIM = [-5, 5]  # X-axis range (Energy in eV).
 Y_LIM = None  # Y-axis range (DOS units). Set to None for auto-scaling.
+ENABLE_CUSTOM_TICKS = False  # Enable fixed tick intervals for notebook workflows.
+X_TICK_INTERVAL = None  # X tick step size when ENABLE_CUSTOM_TICKS is True.
+Y_TICK_INTERVAL = None  # Y tick step size when ENABLE_CUSTOM_TICKS is True.
 
 # --- 3. Sorting & Ordering Logic ---
 ORDER_MODE = "auto"  # Options: 'auto' (Metals first) or 'manual'.
 MANUAL_ORDER = ["Fe", "Ti", "O", "N"]  # Order of elements if mode is 'manual'.
-COLOR_MODE = "auto"  # Options: 'auto' (default palette) or 'manual'.
-MANUAL_COLORS = []  # Custom hex codes or color names if mode is 'manual'.
+COLOR_MODE = "auto"  # Options: 'auto', 'manual', or 'mapped' (orbital/element map).
+MANUAL_COLORS = []  # Custom hex codes or color names when COLOR_MODE is 'manual'.
+ELEMENT_ORBITAL_COLORS = {}  # Optional per-element orbital colors in mapped mode.
+ELEMENT_COLORS = {
+    "Sc": "#5FBAAF",
+    "Cu": "#C29FD0",
+}
+ORBITAL_COLORS = {
+    "dxy": "#8ECFB0",
+    "dxz": "#AFB6D2",
+    "dyz": "#D8B5AF",
+    "dz2": "#A5C1DE",
+    "dx2y2": "#E2D185",
+}
 
 # --- 4. Aesthetics ---
 LEGEND_LOC = "upper left"  # Position of the legend.
@@ -29,6 +44,9 @@ COLOR_TOTAL = "k"  # Color for the total DOS line.
 # --- 5. Font Configuration (NEW: Separated Sizes) ---
 GENERAL_FONT_SIZE = 14  # 坐标轴标签、刻度等通用字体大小
 LEGEND_FONT_SIZE = 10  # 图例专用的字体大小 (独立控制)
+AUTO_SAVE_FIGURE = True  # Auto-save figure on each plot call.
+SAVE_FIGURE_PATH = "dos.png"  # Output file path for auto-save.
+SAVE_FIGURE_DPI = 600  # Output DPI for auto-save.
 
 # --- Global Style Settings ---
 mpl.rcParams["font.family"] = "Arial"
@@ -55,6 +73,47 @@ NON_METALS = {
     "Se",
     "Br",
 }
+
+ORBITAL_MATH_LABELS = {
+    "s": r"s",
+    "px": r"p_x",
+    "py": r"p_y",
+    "pz": r"p_z",
+    "dxy": r"d_{xy}",
+    "dyz": r"d_{yz}",
+    "dz2": r"d_{z^2}",
+    "dxz": r"d_{xz}",
+    "dx2y2": r"d_{x^2-y^2}",
+    "fy3x2": r"f_{y(3x^2-y^2)}",
+    "fxyz": r"f_{xyz}",
+    "fyz2": r"f_{yz^2}",
+    "fz3": r"f_{z^3}",
+    "fxz2": r"f_{xz^2}",
+    "fzx2": r"f_{z(x^2-y^2)}",
+    "fx3": r"f_{x(x^2-3y^2)}",
+}
+
+
+def normalize_orbital_name(orbital):
+    """Normalize orbital aliases so color/label maps use one canonical key."""
+    return orbital.lower().replace("-", "")
+
+
+def split_label_parts(label):
+    """
+    Split a PDOS label into prefix, element symbol, and orbital part.
+
+    Examples:
+        V_dx2y2 -> ("V", "V", "dx2y2")
+        dx2y2 -> ("", None, "dx2y2")
+    """
+    if "_" not in label:
+        return "", None, label
+
+    prefix, orbital = label.rsplit("_", 1)
+    elem_match = re.match(r"([A-Z][a-z]?)", prefix)
+    element = elem_match.group(1) if elem_match else None
+    return prefix, element, orbital
 
 
 def get_sorted_labels(labels, mode="auto", manual_order=None):
@@ -108,6 +167,96 @@ def extract_base_labels(labels):
     return list(base_labels)
 
 
+def get_orbital_color(orbital, color_map):
+    """
+    Resolve orbital color from a mapping with alias normalization.
+
+    Allows either 'dx2y2' or 'dx2-y2' style keys in user-defined maps.
+    """
+    if orbital in color_map:
+        return color_map[orbital]
+
+    orbital_key = normalize_orbital_name(orbital)
+    if orbital_key in color_map:
+        return color_map[orbital_key]
+
+    for key, value in color_map.items():
+        if normalize_orbital_name(key) == orbital_key:
+            return value
+    return None
+
+
+def get_pdos_color(label, palette, index):
+    """
+    Resolve line color with priority:
+    element-orbital mapping > orbital mapping > element mapping > fallback palette.
+    """
+    if COLOR_MODE == "mapped":
+        _, element, orbital = split_label_parts(label)
+        if element in ELEMENT_ORBITAL_COLORS:
+            color = get_orbital_color(orbital, ELEMENT_ORBITAL_COLORS[element])
+            if color is not None:
+                return color
+
+        color = get_orbital_color(orbital, ORBITAL_COLORS)
+        if color is not None:
+            return color
+
+        if element in ELEMENT_COLORS:
+            return ELEMENT_COLORS[element]
+    return palette[index % len(palette)]
+
+
+def format_legend_label(label):
+    """
+    Format orbital part of a PDOS label with matplotlib mathtext.
+
+    Examples:
+        dx2y2 -> $d_{x^2-y^2}$
+        Fe_dz2 -> Fe_$d_{z^2}$
+    """
+    prefix, _, orbital = split_label_parts(label)
+
+    orbital_key = normalize_orbital_name(orbital)
+    orbital_math = ORBITAL_MATH_LABELS.get(orbital_key)
+    if orbital_math is None:
+        return label
+
+    if prefix:
+        return f"{prefix}_${orbital_math}$"
+    return f"${orbital_math}$"
+
+
+def build_ticks(min_val, max_val, interval):
+    """Build evenly spaced ticks between limits."""
+    if interval <= 0:
+        raise ValueError("Tick interval must be a positive number.")
+    lower, upper = (min_val, max_val) if min_val <= max_val else (max_val, min_val)
+    return np.arange(lower, upper + interval * 0.5, interval)
+
+
+def apply_custom_ticks(ax):
+    """Apply fixed tick intervals when enabled."""
+    if not ENABLE_CUSTOM_TICKS:
+        return
+
+    if X_TICK_INTERVAL is not None:
+        ax.set_xticks(build_ticks(X_LIM[0], X_LIM[1], X_TICK_INTERVAL))
+
+    if Y_TICK_INTERVAL is not None:
+        y_min, y_max = ax.get_ylim()
+        ax.set_yticks(build_ticks(y_min, y_max, Y_TICK_INTERVAL))
+
+
+def save_figure_if_needed(fig):
+    """Auto-save figure with configured output settings."""
+    if not AUTO_SAVE_FIGURE:
+        return
+    if SAVE_FIGURE_DPI <= 0:
+        raise ValueError("SAVE_FIGURE_DPI must be a positive number.")
+    fig.savefig(SAVE_FIGURE_PATH, dpi=SAVE_FIGURE_DPI, bbox_inches="tight")
+
+
 def plot_vasp_dos(dos_data):
     """
     Main plotting function.
@@ -146,7 +295,16 @@ def plot_vasp_dos(dos_data):
         raw_labels, mode=ORDER_MODE, manual_order=MANUAL_ORDER
     )
 
-    if COLOR_MODE == "manual" and MANUAL_COLORS:
+    if COLOR_MODE not in {"auto", "manual", "mapped"}:
+        raise ValueError(
+            "COLOR_MODE must be one of: 'auto', 'manual', 'mapped'."
+        )
+
+    if COLOR_MODE == "manual":
+        if not MANUAL_COLORS:
+            raise ValueError(
+                "MANUAL_COLORS must not be empty when COLOR_MODE is 'manual'."
+            )
         palette = MANUAL_COLORS
     else:
         palette = [
@@ -182,7 +340,8 @@ def plot_vasp_dos(dos_data):
 
     # --- B. Plot PDOS (Projected DOS) ---
     for i, label in enumerate(sorted_labels):
-        color = palette[i % len(palette)]
+        color = get_pdos_color(label, palette, i)
+        legend_label = format_legend_label(label)
 
         # Check for spin-polarized data: try label_up/label_down first
         if f"{label}_up" in dos_data and f"{label}_down" in dos_data:
@@ -196,7 +355,7 @@ def plot_vasp_dos(dos_data):
             y_dw = np.zeros_like(raw_energy)
 
         if has_spin and np.any(y_dw):
-            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=label)
+            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=legend_label)
             ax.plot(plot_energy, -y_dw, lw=1.5, c=color)
             ax.fill_between(plot_energy, 0, y_up, color=color, alpha=0.2)
             ax.fill_between(plot_energy, 0, -y_dw, color=color, alpha=0.2)
@@ -206,7 +365,7 @@ def plot_vasp_dos(dos_data):
                     [y_up[mask_view].max(), np.abs(y_dw[mask_view]).max()]
                 )
         else:
-            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=label)
+            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=legend_label)
             ax.fill_between(plot_energy, 0, y_up, color=color, alpha=0.2)
             if np.any(mask_view):
                 y_max_trackers.append(y_up[mask_view].max())
@@ -230,6 +389,7 @@ def plot_vasp_dos(dos_data):
     ax.set_xlim(X_LIM)
     ax.set_xlabel(xlabel_text)
     ax.set_ylabel("Density of states (states/eV)")
+    apply_custom_ticks(ax)
 
     # --- NEW: Independent Legend Font Size ---
     ax.legend(
@@ -240,4 +400,5 @@ def plot_vasp_dos(dos_data):
         spine.set_linewidth(1.5)
 
     plt.tight_layout()
+    save_figure_if_needed(fig)
     plt.show()
