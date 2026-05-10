@@ -54,6 +54,10 @@ mpl.rcParams["font.size"] = GENERAL_FONT_SIZE  # 应用通用字体大小
 mpl.rcParams["font.weight"] = "bold"
 mpl.rcParams["axes.labelweight"] = "bold"
 mpl.rcParams["axes.unicode_minus"] = False
+mpl.rcParams["mathtext.fontset"] = "custom"
+mpl.rcParams["mathtext.rm"] = "Arial"
+mpl.rcParams["mathtext.it"] = "Arial:italic"
+mpl.rcParams["mathtext.bf"] = "Arial:bold"
 
 # --- Helper Constant for 'auto' sorting ---
 NON_METALS = {
