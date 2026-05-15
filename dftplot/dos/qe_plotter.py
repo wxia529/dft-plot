@@ -203,7 +203,17 @@ def parse_qe_pdos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
     return result
 
 
-def plot_qe_dos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
+def plot_qe_dos(
+    data_dir,
+    prefix="sxh",
+    atom_filter=None,
+    group_by=None,
+    show_total_dos=None,
+    show_fermi_line=None,
+    x_lim=None,
+    y_lim=None,
+    **kwargs,
+):
     dos_data = parse_qe_pdos(data_dir, prefix, atom_filter=atom_filter, group_by=group_by)
 
     plot_energy = dos_data["energies"]
@@ -224,11 +234,16 @@ def plot_qe_dos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
     else:
         palette = DEFAULT_COLOR_PALETTE
 
+    _show_total = show_total_dos if show_total_dos is not None else SHOW_TOTAL_DOS
+    _show_fermi = show_fermi_line if show_fermi_line is not None else SHOW_FERMI_LINE
+    _x_lim = x_lim if x_lim is not None else X_LIM
+    _y_lim = y_lim if y_lim is not None else Y_LIM
+
     fig, ax = plt.subplots(figsize=(6, 4.5))
-    mask_view = (plot_energy >= X_LIM[0]) & (plot_energy <= X_LIM[1])
+    mask_view = (plot_energy >= _x_lim[0]) & (plot_energy <= _x_lim[1])
     y_max_trackers = []
 
-    if SHOW_TOTAL_DOS:
+    if _show_total:
         if has_spin:
             ax.plot(plot_energy, dos_up, c=COLOR_TOTAL, lw=1, label="Total", zorder=1)
             ax.plot(plot_energy, -dos_dw, c=COLOR_TOTAL, lw=1, zorder=1)
@@ -267,8 +282,8 @@ def plot_qe_dos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
                 y_max_trackers.append(y_up[mask_view].max())
 
     curr_max = np.max(y_max_trackers) if y_max_trackers else 1.0
-    if Y_LIM:
-        ax.set_ylim(Y_LIM)
+    if _y_lim:
+        ax.set_ylim(_y_lim)
     else:
         ylim_top = curr_max * 1.25
         if has_spin:
@@ -276,10 +291,10 @@ def plot_qe_dos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
         else:
             ax.set_ylim(0, ylim_top)
 
-    if SHOW_FERMI_LINE:
+    if _show_fermi:
         ax.axvline(fermi_line, ls="--", c="gray", lw=1.0, label="E$_F$")
     ax.axhline(0, c="black", lw=0.5)
-    ax.set_xlim(X_LIM)
+    ax.set_xlim(_x_lim)
     ax.set_xlabel(xlabel_text)
     ax.set_ylabel("Density of states (states/eV)")
     apply_custom_ticks(ax)
