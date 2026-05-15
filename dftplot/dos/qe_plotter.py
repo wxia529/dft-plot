@@ -5,35 +5,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dftplot.dos.plotter import (
-    SHOW_TOTAL_DOS,
-    SHOW_FERMI_LINE,
-    X_LIM,
-    Y_LIM,
-    ENABLE_CUSTOM_TICKS,
-    X_TICK_INTERVAL,
-    Y_TICK_INTERVAL,
-    ORDER_MODE,
-    MANUAL_ORDER,
-    COLOR_MODE,
-    MANUAL_COLORS,
-    ELEMENT_COLORS,
-    ORBITAL_COLORS,
-    ELEMENT_ORBITAL_COLORS,
-    LEGEND_LOC,
-    LEGEND_NCOL,
-    COLOR_TOTAL,
-    LEGEND_FONT_SIZE,
-    AUTO_SAVE_FIGURE,
-    SAVE_FIGURE_PATH,
-    SAVE_FIGURE_DPI,
-    get_sorted_labels,
-    extract_base_labels,
-    get_pdos_color,
-    format_legend_label,
-    apply_custom_ticks,
-    save_figure_if_needed,
-)
+from dftplot.dos import plotter
 
 DEFAULT_COLOR_PALETTE = [
     "#1f77b4",
@@ -226,18 +198,18 @@ def plot_qe_dos(
 
     ignore_keys = {"energies", "fermi_energy", "up", "down"}
     raw_prefixed_labels = [k for k in dos_data.keys() if k not in ignore_keys]
-    raw_labels = extract_base_labels(raw_prefixed_labels)
-    sorted_labels = get_sorted_labels(raw_labels, mode=ORDER_MODE, manual_order=MANUAL_ORDER)
+    raw_labels = plotter.extract_base_labels(raw_prefixed_labels)
+    sorted_labels = plotter.get_sorted_labels(raw_labels, mode=plotter.ORDER_MODE, manual_order=plotter.MANUAL_ORDER)
 
-    if COLOR_MODE == "manual":
-        palette = MANUAL_COLORS
+    if plotter.COLOR_MODE == "manual":
+        palette = plotter.MANUAL_COLORS
     else:
         palette = DEFAULT_COLOR_PALETTE
 
-    _show_total = show_total_dos if show_total_dos is not None else SHOW_TOTAL_DOS
-    _show_fermi = show_fermi_line if show_fermi_line is not None else SHOW_FERMI_LINE
-    _x_lim = x_lim if x_lim is not None else X_LIM
-    _y_lim = y_lim if y_lim is not None else Y_LIM
+    _show_total = show_total_dos if show_total_dos is not None else plotter.SHOW_TOTAL_DOS
+    _show_fermi = show_fermi_line if show_fermi_line is not None else plotter.SHOW_FERMI_LINE
+    _x_lim = x_lim if x_lim is not None else plotter.X_LIM
+    _y_lim = y_lim if y_lim is not None else plotter.Y_LIM
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
     mask_view = (plot_energy >= _x_lim[0]) & (plot_energy <= _x_lim[1])
@@ -245,19 +217,19 @@ def plot_qe_dos(
 
     if _show_total:
         if has_spin:
-            ax.plot(plot_energy, dos_up, c=COLOR_TOTAL, lw=1, label="Total", zorder=1)
-            ax.plot(plot_energy, -dos_dw, c=COLOR_TOTAL, lw=1, zorder=1)
+            ax.plot(plot_energy, dos_up, c=plotter.COLOR_TOTAL, lw=1, label="Total", zorder=1)
+            ax.plot(plot_energy, -dos_dw, c=plotter.COLOR_TOTAL, lw=1, zorder=1)
             if np.any(mask_view):
                 y_max_trackers.extend([dos_up[mask_view].max(), np.abs(dos_dw[mask_view]).max()])
         else:
-            ax.plot(plot_energy, dos_up, c=COLOR_TOTAL, lw=1, label="Total", zorder=1)
+            ax.plot(plot_energy, dos_up, c=plotter.COLOR_TOTAL, lw=1, label="Total", zorder=1)
             ax.fill_between(plot_energy, 0, dos_up, color="gray", alpha=0.1)
             if np.any(mask_view):
                 y_max_trackers.append(dos_up[mask_view].max())
 
     for i, label in enumerate(sorted_labels):
-        color = get_pdos_color(label, palette, i)
-        legend_label = format_legend_label(label)
+        color = plotter.get_pdos_color(label, palette, i)
+        legend_label = plotter.format_legend_label(label)
 
         if f"{label}_up" in dos_data and f"{label}_down" in dos_data:
             y_up = dos_data[f"{label}_up"]
@@ -297,12 +269,12 @@ def plot_qe_dos(
     ax.set_xlim(_x_lim)
     ax.set_xlabel(xlabel_text)
     ax.set_ylabel("Density of states (states/eV)")
-    apply_custom_ticks(ax)
-    ax.legend(loc=LEGEND_LOC, frameon=False, fontsize=LEGEND_FONT_SIZE, ncol=LEGEND_NCOL)
+    plotter.apply_custom_ticks(ax)
+    ax.legend(loc=plotter.LEGEND_LOC, frameon=False, fontsize=plotter.LEGEND_FONT_SIZE, ncol=plotter.LEGEND_NCOL)
 
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
 
     plt.tight_layout()
-    save_figure_if_needed(fig)
+    plotter.save_figure_if_needed(fig)
     plt.show()
