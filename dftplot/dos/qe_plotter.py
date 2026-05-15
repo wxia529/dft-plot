@@ -121,7 +121,18 @@ def _parse_pdos_atm(filepath):
     return info, energies, ldos_up, ldos_down, pdos_components
 
 
-def parse_qe_pdos(data_dir, prefix="sxh"):
+def _match_atom_filter(info, atom_filter):
+    if atom_filter is None:
+        return True
+    for item in atom_filter:
+        if isinstance(item, int) and info["atom_num"] == item:
+            return True
+        if isinstance(item, str) and info["element"] == item:
+            return True
+    return False
+
+
+def parse_qe_pdos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
     tot_file = os.path.join(data_dir, f"{prefix}.pdos_tot")
     energies, tot_up, tot_down = _parse_pdos_tot(tot_file)
 
@@ -139,24 +150,61 @@ def parse_qe_pdos(data_dir, prefix="sxh"):
         if pattern.search(f) and f.endswith(")")
     ])
 
-    for filepath in atm_files:
-        info, _, ldos_up, ldos_down, components = _parse_pdos_atm(filepath)
-        elem = info["element"]
-        orbital = info["orbital"]
+    if group_by == "element":
+        elem_up = {}
+        elem_down = {}
+        for filepath in atm_files:
+            info, _, ldos_up, ldos_down, components = _parse_pdos_atm(filepath)
+            if not _match_atom_filter(info, atom_filter):
+                continue
+            elem = info["element"]
+            if elem not in elem_up:
+                elem_up[elem] = np.zeros_like(ldos_up)
+                elem_down[elem] = np.zeros_like(ldos_down)
+            elem_up[elem] += ldos_up
+            elem_down[elem] += ldos_down
+        for elem in sorted(elem_up.keys()):
+            result[f"{elem}_up"] = elem_up[elem]
+            result[f"{elem}_down"] = elem_down[elem]
 
-        ldos_label = f"{elem}_{orbital}"
-        result[f"{ldos_label}_up"] = ldos_up
-        result[f"{ldos_label}_down"] = ldos_down
+    elif group_by == "orbital":
+        orb_up = {}
+        orb_down = {}
+        for filepath in atm_files:
+            info, _, ldos_up, ldos_down, components = _parse_pdos_atm(filepath)
+            if not _match_atom_filter(info, atom_filter):
+                continue
+            orbital = info["orbital"]
+            if orbital not in orb_up:
+                orb_up[orbital] = np.zeros_like(ldos_up)
+                orb_down[orbital] = np.zeros_like(ldos_down)
+            orb_up[orbital] += ldos_up
+            orb_down[orbital] += ldos_down
+        for orbital in sorted(orb_up.keys()):
+            result[f"{orbital}_up"] = orb_up[orbital]
+            result[f"{orbital}_down"] = orb_down[orbital]
 
-        for label, comp_up, comp_down in components:
-            result[f"{label}_up"] = comp_up
-            result[f"{label}_down"] = comp_down
+    else:
+        for filepath in atm_files:
+            info, _, ldos_up, ldos_down, components = _parse_pdos_atm(filepath)
+            if not _match_atom_filter(info, atom_filter):
+                continue
+            elem = info["element"]
+            orbital = info["orbital"]
+
+            ldos_label = f"{elem}_{orbital}"
+            result[f"{ldos_label}_up"] = ldos_up
+            result[f"{ldos_label}_down"] = ldos_down
+
+            for label, comp_up, comp_down in components:
+                result[f"{label}_up"] = comp_up
+                result[f"{label}_down"] = comp_down
 
     return result
 
 
-def plot_qe_dos(data_dir, prefix="sxh"):
-    dos_data = parse_qe_pdos(data_dir, prefix)
+def plot_qe_dos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
+    dos_data = parse_qe_pdos(data_dir, prefix, atom_filter=atom_filter, group_by=group_by)
 
     plot_energy = dos_data["energies"]
     fermi_line = 0.0
