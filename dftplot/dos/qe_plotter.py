@@ -1,33 +1,61 @@
 import os
 import re
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
+
+from dftplot.dos.plotter import (
+    SHOW_TOTAL_DOS,
+    SHOW_FERMI_LINE,
+    X_LIM,
+    Y_LIM,
+    ENABLE_CUSTOM_TICKS,
+    X_TICK_INTERVAL,
+    Y_TICK_INTERVAL,
+    ORDER_MODE,
+    MANUAL_ORDER,
+    COLOR_MODE,
+    MANUAL_COLORS,
+    ELEMENT_COLORS,
+    ORBITAL_COLORS,
+    ELEMENT_ORBITAL_COLORS,
+    LEGEND_LOC,
+    LEGEND_NCOL,
+    COLOR_TOTAL,
+    LEGEND_FONT_SIZE,
+    AUTO_SAVE_FIGURE,
+    SAVE_FIGURE_PATH,
+    SAVE_FIGURE_DPI,
+    get_sorted_labels,
+    extract_base_labels,
+    get_pdos_color,
+    format_legend_label,
+    apply_custom_ticks,
+    save_figure_if_needed,
+)
+
+DEFAULT_COLOR_PALETTE = [
+    "#1f77b4",
+    "#d62728",
+    "#2ca02c",
+    "#ff7f0e",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+]
 
 
 def _parse_pdos_tot(filepath):
-    """Parse QE pdos_tot file.
-    
-    Note: QE energies are already relative to the Fermi level.
-    
-    Args:
-        filepath: Path to {prefix}.pdos_tot file.
-        
-    Returns:
-        Tuple of (energies, dos_up, dos_down) as numpy arrays.
-        
-    Raises:
-        FileNotFoundError: If filepath does not exist.
-        ValueError: If data has fewer than 3 columns.
-    """
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
-    
+
     data = np.loadtxt(filepath, comments="#")
     if data.ndim == 1:
         data = data.reshape(1, -1)
     if data.shape[1] < 3:
         raise ValueError(f"Expected at least 3 columns, got {data.shape[1]}")
-    
+
     energies = data[:, 0]
     dos_up = data[:, 1]
     dos_down = data[:, 2]
@@ -43,14 +71,6 @@ QE_ORBITAL_COMPONENTS = {
 
 
 def _parse_filename(filename):
-    """Parse QE PDOS filename to extract atom info.
-    
-    Args:
-        filename: e.g. 'sxh.pdos_atm#91(Bi)_wfc#5(d)'
-        
-    Returns:
-        Dict with keys: atom_num, element, wfc_num, orbital
-    """
     pattern = r"pdos_atm#(\d+)\(([A-Z][a-z]?)\)_wfc#(\d+)\(([a-z]+)\)"
     match = re.search(pattern, filename)
     if not match:
@@ -64,39 +84,26 @@ def _parse_filename(filename):
 
 
 def _parse_pdos_atm(filepath):
-    """Parse a single QE pdos_atm file.
-    
-    Args:
-        filepath: Path to pdos_atm file.
-        
-    Returns:
-        Tuple of (info, energies, ldos_up, ldos_down, pdos_components)
-        where pdos_components is list of (label, up_array, down_array)
-        
-    Raises:
-        FileNotFoundError: If filepath does not exist.
-        ValueError: If data has fewer than 3 columns.
-    """
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
-    
+
     info = _parse_filename(os.path.basename(filepath))
     if info is None:
         raise ValueError(f"Cannot parse filename: {filepath}")
-    
+
     data = np.loadtxt(filepath, comments="#")
     if data.ndim == 1:
         data = data.reshape(1, -1)
     if data.shape[1] < 3:
         raise ValueError(f"Expected at least 3 columns, got {data.shape[1]}")
-    
+
     energies = data[:, 0]
     ldos_up = data[:, 1]
     ldos_down = data[:, 2]
-    
+
     orbital = info["orbital"]
     components = QE_ORBITAL_COMPONENTS.get(orbital, [])
-    
+
     pdos_components = []
     elem = info["element"]
     for i, comp in enumerate(components):
@@ -110,5 +117,129 @@ def _parse_pdos_atm(filepath):
         else:
             label = f"{elem}_{orbital}"
         pdos_components.append((label, comp_up, comp_down))
-    
+
     return info, energies, ldos_up, ldos_down, pdos_components
+
+
+def parse_qe_pdos(data_dir, prefix="sxh"):
+    tot_file = os.path.join(data_dir, f"{prefix}.pdos_tot")
+    energies, tot_up, tot_down = _parse_pdos_tot(tot_file)
+
+    result = {
+        "energies": energies,
+        "fermi_energy": 0.0,
+        "up": tot_up,
+        "down": tot_down,
+    }
+
+    pattern = re.compile(rf"^{re.escape(prefix)}\.pdos_atm#")
+    atm_files = sorted([
+        os.path.join(data_dir, f)
+        for f in os.listdir(data_dir)
+        if pattern.search(f) and f.endswith(")")
+    ])
+
+    for filepath in atm_files:
+        info, _, ldos_up, ldos_down, components = _parse_pdos_atm(filepath)
+        elem = info["element"]
+        orbital = info["orbital"]
+
+        ldos_label = f"{elem}_{orbital}"
+        result[f"{ldos_label}_up"] = ldos_up
+        result[f"{ldos_label}_down"] = ldos_down
+
+        for label, comp_up, comp_down in components:
+            result[f"{label}_up"] = comp_up
+            result[f"{label}_down"] = comp_down
+
+    return result
+
+
+def plot_qe_dos(data_dir, prefix="sxh"):
+    dos_data = parse_qe_pdos(data_dir, prefix)
+
+    plot_energy = dos_data["energies"]
+    fermi_line = 0.0
+    xlabel_text = r"Energy (eV) relative to E$_F$"
+
+    dos_up = dos_data["up"]
+    dos_dw = dos_data["down"]
+    has_spin = np.any(dos_dw) and not np.allclose(dos_up, dos_dw)
+
+    ignore_keys = {"energies", "fermi_energy", "up", "down"}
+    raw_prefixed_labels = [k for k in dos_data.keys() if k not in ignore_keys]
+    raw_labels = extract_base_labels(raw_prefixed_labels)
+    sorted_labels = get_sorted_labels(raw_labels, mode=ORDER_MODE, manual_order=MANUAL_ORDER)
+
+    if COLOR_MODE == "manual":
+        palette = MANUAL_COLORS
+    else:
+        palette = DEFAULT_COLOR_PALETTE
+
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    mask_view = (plot_energy >= X_LIM[0]) & (plot_energy <= X_LIM[1])
+    y_max_trackers = []
+
+    if SHOW_TOTAL_DOS:
+        if has_spin:
+            ax.plot(plot_energy, dos_up, c=COLOR_TOTAL, lw=1, label="Total", zorder=1)
+            ax.plot(plot_energy, -dos_dw, c=COLOR_TOTAL, lw=1, zorder=1)
+            if np.any(mask_view):
+                y_max_trackers.extend([dos_up[mask_view].max(), np.abs(dos_dw[mask_view]).max()])
+        else:
+            ax.plot(plot_energy, dos_up, c=COLOR_TOTAL, lw=1, label="Total", zorder=1)
+            ax.fill_between(plot_energy, 0, dos_up, color="gray", alpha=0.1)
+            if np.any(mask_view):
+                y_max_trackers.append(dos_up[mask_view].max())
+
+    for i, label in enumerate(sorted_labels):
+        color = get_pdos_color(label, palette, i)
+        legend_label = format_legend_label(label)
+
+        if f"{label}_up" in dos_data and f"{label}_down" in dos_data:
+            y_up = dos_data[f"{label}_up"]
+            y_dw = dos_data[f"{label}_down"]
+        elif label in dos_data:
+            y_up = dos_data[label]
+            y_dw = np.zeros_like(plot_energy)
+        else:
+            continue
+
+        if has_spin and np.any(y_dw):
+            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=legend_label)
+            ax.plot(plot_energy, -y_dw, lw=1.5, c=color)
+            ax.fill_between(plot_energy, 0, y_up, color=color, alpha=0.2)
+            ax.fill_between(plot_energy, 0, -y_dw, color=color, alpha=0.2)
+            if np.any(mask_view):
+                y_max_trackers.extend([y_up[mask_view].max(), np.abs(y_dw[mask_view]).max()])
+        else:
+            ax.plot(plot_energy, y_up, lw=1.5, c=color, label=legend_label)
+            ax.fill_between(plot_energy, 0, y_up, color=color, alpha=0.2)
+            if np.any(mask_view):
+                y_max_trackers.append(y_up[mask_view].max())
+
+    curr_max = np.max(y_max_trackers) if y_max_trackers else 1.0
+    if Y_LIM:
+        ax.set_ylim(Y_LIM)
+    else:
+        ylim_top = curr_max * 1.25
+        if has_spin:
+            ax.set_ylim(-ylim_top, ylim_top)
+        else:
+            ax.set_ylim(0, ylim_top)
+
+    if SHOW_FERMI_LINE:
+        ax.axvline(fermi_line, ls="--", c="gray", lw=1.0, label="E$_F$")
+    ax.axhline(0, c="black", lw=0.5)
+    ax.set_xlim(X_LIM)
+    ax.set_xlabel(xlabel_text)
+    ax.set_ylabel("Density of states (states/eV)")
+    apply_custom_ticks(ax)
+    ax.legend(loc=LEGEND_LOC, frameon=False, fontsize=LEGEND_FONT_SIZE, ncol=LEGEND_NCOL)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+
+    plt.tight_layout()
+    save_figure_if_needed(fig)
+    plt.show()
