@@ -104,13 +104,32 @@ def _match_atom_filter(info, atom_filter):
     return False
 
 
-def parse_qe_pdos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
+def _match_atom_in_group(info, group):
+    for item in group:
+        if isinstance(item, int) and info["atom_num"] == item:
+            return True
+        if isinstance(item, str) and info["element"] == item:
+            return True
+    return False
+
+
+def _get_group_label(group):
+    parts = []
+    for item in group:
+        if isinstance(item, int):
+            parts.append(f"Atm{item}")
+        else:
+            parts.append(item)
+    return "_".join(parts)
+
+
+def parse_qe_pdos(data_dir, prefix="sxh", atom_filter=None, group_by=None, fermi_energy=0.0, sum_atoms=None, sum_labels=None):
     tot_file = os.path.join(data_dir, f"{prefix}.pdos_tot")
     energies, tot_up, tot_down = _parse_pdos_tot(tot_file)
 
     result = {
         "energies": energies,
-        "fermi_energy": 0.0,
+        "fermi_energy": fermi_energy,
         "up": tot_up,
         "down": tot_down,
     }
@@ -122,7 +141,32 @@ def parse_qe_pdos(data_dir, prefix="sxh", atom_filter=None, group_by=None):
         if pattern.search(f) and f.endswith(")")
     ])
 
-    if group_by == "element":
+    if sum_atoms is not None:
+        group_up = {}
+        group_down = {}
+        if sum_labels is not None:
+            group_labels = list(sum_labels)
+        else:
+            group_labels = [_get_group_label(g) for g in sum_atoms]
+        for label in group_labels:
+            group_up[label] = np.zeros_like(tot_up)
+            group_down[label] = np.zeros_like(tot_down)
+
+        for filepath in atm_files:
+            info, _, ldos_up, ldos_down, _ = _parse_pdos_atm(filepath)
+            if not _match_atom_filter(info, atom_filter):
+                continue
+            for i, group in enumerate(sum_atoms):
+                if _match_atom_in_group(info, group):
+                    group_up[group_labels[i]] += ldos_up
+                    group_down[group_labels[i]] += ldos_down
+                    break
+
+        for label in group_labels:
+            result[f"{label}_up"] = group_up[label]
+            result[f"{label}_down"] = group_down[label]
+
+    elif group_by == "element":
         elem_up = {}
         elem_down = {}
         for filepath in atm_files:
@@ -180,15 +224,21 @@ def plot_qe_dos(
     prefix="sxh",
     atom_filter=None,
     group_by=None,
+    sum_atoms=None,
+    sum_labels=None,
+    fermi_energy=0.0,
+    color_map=None,
+    legend_loc=None,
+    legend_ncol=None,
     show_total_dos=None,
     show_fermi_line=None,
     x_lim=None,
     y_lim=None,
     **kwargs,
 ):
-    dos_data = parse_qe_pdos(data_dir, prefix, atom_filter=atom_filter, group_by=group_by)
+    dos_data = parse_qe_pdos(data_dir, prefix, atom_filter=atom_filter, group_by=group_by, fermi_energy=fermi_energy, sum_atoms=sum_atoms, sum_labels=sum_labels)
 
-    plot_energy = dos_data["energies"]
+    plot_energy = dos_data["energies"] - fermi_energy
     fermi_line = 0.0
     xlabel_text = r"Energy (eV) relative to E$_F$"
 
@@ -210,6 +260,8 @@ def plot_qe_dos(
     _show_fermi = show_fermi_line if show_fermi_line is not None else plotter.SHOW_FERMI_LINE
     _x_lim = x_lim if x_lim is not None else plotter.X_LIM
     _y_lim = y_lim if y_lim is not None else plotter.Y_LIM
+    _legend_loc = legend_loc if legend_loc is not None else plotter.LEGEND_LOC
+    _legend_ncol = legend_ncol if legend_ncol is not None else plotter.LEGEND_NCOL
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
     mask_view = (plot_energy >= _x_lim[0]) & (plot_energy <= _x_lim[1])
@@ -227,8 +279,14 @@ def plot_qe_dos(
             if np.any(mask_view):
                 y_max_trackers.append(dos_up[mask_view].max())
 
+    if color_map is None:
+        color_map = {}
+
     for i, label in enumerate(sorted_labels):
-        color = plotter.get_pdos_color(label, palette, i)
+        if label in color_map:
+            color = color_map[label]
+        else:
+            color = plotter.get_pdos_color(label, palette, i)
         legend_label = plotter.format_legend_label(label)
 
         if f"{label}_up" in dos_data and f"{label}_down" in dos_data:
@@ -270,7 +328,7 @@ def plot_qe_dos(
     ax.set_xlabel(xlabel_text)
     ax.set_ylabel("Density of states (states/eV)")
     plotter.apply_custom_ticks(ax)
-    ax.legend(loc=plotter.LEGEND_LOC, frameon=False, fontsize=plotter.LEGEND_FONT_SIZE, ncol=plotter.LEGEND_NCOL)
+    ax.legend(loc=_legend_loc, frameon=False, fontsize=plotter.LEGEND_FONT_SIZE, ncol=_legend_ncol)
 
     for spine in ax.spines.values():
         spine.set_linewidth(1.5)
